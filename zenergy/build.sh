@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ================================================================
-#  v4l2loopback — kmod build script
+#  zenergy — kmod build script
 # ================================================================
 
 set -Eeuo pipefail
@@ -101,7 +101,7 @@ ok "akmodsbuild restored"
 # ── Locate built RPM ──────────────────────────────────────────
 info "Locating built zenergy kmod RPM..."
 shopt -s nullglob
-RPMS=(/var/cache/akmods/v4l2loopback/kmod-zenergy-*.rpm)
+RPMS=(/var/cache/akmods/zenergy/kmod-zenergy-*.rpm)
 shopt -u nullglob
 
 [[ ${#RPMS[@]} -gt 0 ]] || \
