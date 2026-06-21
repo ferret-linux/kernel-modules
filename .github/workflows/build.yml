@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        kmod: [v4l2loopback, openrazer, nvidia, xpadneo, xone, wl, evdi, hid-fanatecff, sc0710, new-lg4ff, hid-tmff2, openzfs, zenergy]
+        kmod: [v4l2loopback, openrazer, nvidia, xpadneo, xone, wl, evdi, hid-fanatecff, sc0710, new-lg4ff, hid-tmff2, openzfs, zenergy, kvmfr]
 
     steps:
       - name: Checkout kernel-modules
@@ -231,6 +231,14 @@ jobs:
               || { echo "libzfs package missing"; exit 1; }
             ls output/${{ matrix.kmod }}/libzpool*.rpm \
               || { echo "libzpool package missing"; exit 1; }
+          fi
+
+          # ── looking-glass (kvmfr) expected packages ──────────
+          if [[ "${{ matrix.kmod }}" == "looking-glass" ]]; then
+            ls output/${{ matrix.kmod }}/kmod-kvmfr-*.rpm \
+              || { echo "kmod-kvmfr package missing"; exit 1; }
+            ls output/${{ matrix.kmod }}/kvmfr-kmod-common-*.rpm \
+              || { echo "kvmfr-kmod-common package missing"; exit 1; }
           fi
 
       - name: Sanitize RPM filenames
