@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        kmod: [v4l2loopback, openrazer, nvidia, xpadneo, xone, wl, evdi, hid-fanatecff, sc0710, new-lg4ff, hid-tmff2, openzfs]
+        kmod: [v4l2loopback, openrazer, nvidia, xpadneo, xone, wl, evdi, hid-fanatecff, sc0710, new-lg4ff, hid-tmff2, openzfs, zenergy]
 
     steps:
       - name: Checkout kernel-modules
@@ -115,6 +115,16 @@ jobs:
               || { echo "v4l2loopback-akmod-modules package missing"; exit 1; }
             ls output/${{ matrix.kmod }}/v4l2loopback-*.rpm \
               || { echo "v4l2loopback companion package missing"; exit 1; }
+          fi
+
+          # ── zenergy expected packages ──────────────────
+          if [[ "${{ matrix.kmod }}" == "zenergy" ]]; then
+            ls output/${{ matrix.kmod }}/kmod-${{ matrix.kmod }}-*.rpm \
+              || { echo "kmod package missing"; exit 1; }
+            ls output/${{ matrix.kmod }}/zenergy-akmod-modules-*.rpm \
+              || { echo "zenergy-akmod-modules package missing"; exit 1; }
+            ls output/${{ matrix.kmod }}/zenergy-*.rpm \
+              || { echo "zenergy companion package missing"; exit 1; }
           fi
 
           # ── openrazer expected packages ─────────────────────
