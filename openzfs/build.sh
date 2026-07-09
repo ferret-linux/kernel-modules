@@ -121,8 +121,6 @@ curl -fLsS -O "${BASE_URL}/zfs-${ZFS_VERSION}.sha256.asc"
 ok "Tarball and signatures downloaded"
 
 # ── GPG verification ──────────────────────────────────────────
-# use WORK_DIR for GNUPGHOME — avoids touching /root which may be
-# read-only or already exist with wrong permissions in the container
 info "Setting up GPG keyring..."
 export GNUPGHOME="${WORK_DIR}/.gnupg"
 mkdir -p "${GNUPGHOME}"
@@ -158,6 +156,51 @@ tar -z -x --no-same-owner --no-same-permissions \
 ZFS_SRC="${WORK_DIR}/zfs-${ZFS_VERSION}"
 [[ -d "$ZFS_SRC" ]] || fail "Source directory not found after extraction"
 ok "Source extracted: ${ZFS_SRC}"
+
+# ── ZFS ↔ kernel compatibility patch ──────────────────────────
+# Patches ZFS's META (Linux-Maximum) ONLY when BOTH are true:
+#   1. Upstream ZFS's own META does NOT yet support our kernel
+#   2. Our kernel is still within the ceiling WE'VE approved
+# Any other case (upstream already supports it, or older kernel)
+# auto-skips with no changes. Kernel > our ceiling = hard fail,
+# never silently patched.
+info "Checking ZFS kernel compatibility (META Linux-Maximum)..."
+cd "$ZFS_SRC"
+
+# ▼▼▼ YOU control this — highest kernel you've validated/approve for patching ▼▼▼
+ZFS_MAX_ALLOWED_KVER="${ZFS_MAX_ALLOWED_KVER:-7.1}"
+# ▲▲▲ bump this yourself once you've verified a newer kernel actually builds fine ▲▲▲
+
+KERNEL_MAJMIN="$(printf '%s' "$KERNEL_VERSION" | grep -oP '^[0-9]+\.[0-9]+')"
+[[ -n "$KERNEL_MAJMIN" ]] || fail "Could not parse kernel major.minor from ${KERNEL_VERSION}"
+
+ZFS_META_MAX="$(awk -F': *' '/^Linux-Maximum:/{print $2}' META)"
+[[ -n "$ZFS_META_MAX" ]] || fail "Could not read Linux-Maximum from META"
+
+info "Kernel: ${KERNEL_MAJMIN}  |  ZFS declared max: ${ZFS_META_MAX}  |  Your approved ceiling: ${ZFS_MAX_ALLOWED_KVER}"
+
+version_gt() {
+    [[ "$1" == "$2" ]] && return 1
+    [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" == "$1" ]]
+}
+
+if ! version_gt "$KERNEL_MAJMIN" "$ZFS_META_MAX"; then
+    ok "ZFS already supports kernel ${KERNEL_MAJMIN} (max: ${ZFS_META_MAX}) — no patch needed"
+
+elif version_gt "$KERNEL_MAJMIN" "$ZFS_MAX_ALLOWED_KVER"; then
+    fail "Kernel ${KERNEL_MAJMIN} exceeds your approved ceiling (ZFS_MAX_ALLOWED_KVER=${ZFS_MAX_ALLOWED_KVER}). Refusing to auto-patch — bump ZFS_MAX_ALLOWED_KVER yourself once you've verified this kernel builds fine."
+
+else
+    warn "Kernel ${KERNEL_MAJMIN} exceeds ZFS's declared max (${ZFS_META_MAX}) but is within your approved ceiling (${ZFS_MAX_ALLOWED_KVER}) — patching META"
+
+    sed -i "s/^Linux-Maximum:.*/Linux-Maximum:\t${KERNEL_MAJMIN}/" META
+    ok "META patched: Linux-Maximum ${ZFS_META_MAX} -> ${KERNEL_MAJMIN}"
+
+    info "Regenerating configure from patched META..."
+    ./autogen.sh > /tmp/autogen.log 2>&1 \
+        || { cat /tmp/autogen.log; fail "autogen.sh failed while regenerating configure"; }
+    ok "configure regenerated"
+fi
 
 # ── Configure ─────────────────────────────────────────────────
 info "Configuring for kernel ${KERNEL_VERSION}..."
@@ -234,8 +277,6 @@ cp /ferret-sb.der /tmp/zodium-sign/public_key.der
 ok "Signing keys installed"
 
 # ── Install all ZFS RPMs ──────────────────────────────────────
-# Install everything together so dnf can resolve the virtual provide
-# zfs-kmod-common = <version> that the zfs RPM declares and kmod-zfs requires
 info "Installing ZFS RPMs..."
 KMOD_RPM="$(printf '%s\n' "${ALL_RPMS[@]}" | grep 'kmod-zfs-' | grep -v debug | grep -v devel | head -1)"
 [[ -n "${KMOD_RPM}" ]] || fail "kmod-zfs RPM not found"
