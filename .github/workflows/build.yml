@@ -88,7 +88,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        kmod: [v4l2loopback, openrazer, nvidia, xpadneo, xone, evdi, hid-fanatecff, sc0710, new-lg4ff, hid-tmff2, openzfs, zenergy, kvmfr]
+        kmod: [v4l2loopback, openrazer, nvidia, xpadneo, xone, evdi, hid-fanatecff, new-lg4ff, hid-tmff2, openzfs, zenergy, kvmfr]
 
     steps:
       - name: Checkout kernel-modules
