@@ -95,9 +95,16 @@ WORK_DIR="$(mktemp -d)"
 cd "$WORK_DIR"
 
 info "Fetching ZFS release list..."
+# Authenticate when a token is provided: shared CI runner IPs are otherwise
+# rate limited by the REST API (403). Without a token this still works for
+# local runs, just with the lower anonymous quota.
+GITHUB_API_AUTH=()
+[[ -n "${GITHUB_TOKEN:-}" ]] \
+    && GITHUB_API_AUTH=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
 curl -fLsS \
     -H "User-Agent: kernel-modules" \
     -H "Accept: application/vnd.github+json" \
+    "${GITHUB_API_AUTH[@]}" \
     "https://api.github.com/repos/openzfs/zfs/releases" \
     -o zfs-releases.json
 

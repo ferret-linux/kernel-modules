@@ -36,10 +36,13 @@ KERNEL_VERSION="$(rpm -q kernel \
 ok "Kernel version: ${KERNEL_VERSION}"
 
 # ── Detect openrazer version ──────────────────────────────────
+# Resolved via the /releases/latest redirect rather than the REST API:
+# unauthenticated API calls from shared CI runners are rate limited (403),
+# and this needs no token.
 info "Detecting latest openrazer release..."
-OPENRAZER_TAG="$(curl -fLsS \
-    https://api.github.com/repos/openrazer/openrazer/releases/latest \
-    | grep '"tag_name"' | cut -d'"' -f4)"
+OPENRAZER_TAG="$(curl -fsSI -o /dev/null -w '%{redirect_url}' \
+    https://github.com/openrazer/openrazer/releases/latest \
+    | sed 's#.*/tag/##')"
 [[ -n "$OPENRAZER_TAG" ]] || fail "Could not detect latest openrazer release"
 
 # strip leading v for RPM version field

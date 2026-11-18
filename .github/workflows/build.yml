@@ -76,6 +76,7 @@ jobs:
             -v "${{ github.workspace }}/${{ matrix.kmod }}:/kernel-modules/${{ matrix.kmod }}:ro" \
             -v "${{ github.workspace }}/output/${{ matrix.kmod }}:/output" \
             -e FERRET_SB_KEY="${{ secrets.FERRET_SB_KEY }}" \
+            -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
             -v "${{ github.workspace }}/mok-file/ferret-sb.der:/ferret-sb.der:ro" \
             quay.io/fedora/fedora-bootc:latest \
             bash /kernel-modules/${{ matrix.kmod }}/build.sh

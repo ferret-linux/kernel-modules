@@ -38,10 +38,13 @@ KERNEL_VERSION="$(rpm -q kernel \
 ok "Kernel version: ${KERNEL_VERSION}"
 
 # ── Detect latest LookingGlass release ────────────────────────
+# Resolved via the /releases/latest redirect rather than the REST API:
+# unauthenticated API calls from shared CI runners are rate limited (403),
+# and this needs no token.
 info "Detecting latest LookingGlass release..."
-LG_TAG="$(curl -fLsS \
-    https://api.github.com/repos/gnif/LookingGlass/releases/latest \
-    | grep '"tag_name"' | cut -d'"' -f4)"
+LG_TAG="$(curl -fsSI -o /dev/null -w '%{redirect_url}' \
+    https://github.com/gnif/LookingGlass/releases/latest \
+    | sed 's#.*/tag/##')"
 [[ -n "$LG_TAG" ]] || fail "Could not detect latest LookingGlass release"
 
 # Build an RPM-legal version from the tag:
