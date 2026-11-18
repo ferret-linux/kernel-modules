@@ -44,8 +44,11 @@ LG_TAG="$(curl -fLsS \
     | grep '"tag_name"' | cut -d'"' -f4)"
 [[ -n "$LG_TAG" ]] || fail "Could not detect latest LookingGlass release"
 
-# strip leading non-numeric chars for RPM version field (B7 -> 7)
-LG_VERSION="$(echo "${LG_TAG}" | sed 's/^[A-Za-z]*//')"
+# Build an RPM-legal version from the tag:
+#   strip leading non-numeric chars (B7 -> 7)
+#   '-' is illegal in Version, and '~' is its rpm equivalent (8-rc1 -> 8~rc1),
+#   which also sorts before the final 8 release, as a prerelease should.
+LG_VERSION="$(echo "${LG_TAG}" | sed 's/^[A-Za-z]*//' | tr '-' '~')"
 ok "LookingGlass tag: ${LG_TAG} -> RPM version: ${LG_VERSION}"
 
 # ── Install build dependencies ────────────────────────────────
