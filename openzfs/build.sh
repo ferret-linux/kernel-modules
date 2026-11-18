@@ -29,10 +29,9 @@ say ""
 mkdir -p /var/tmp
 chmod 1777 /var/tmp
 
-# ── Upgrade system ────────────────────────────────────────────
-info "Upgrading system packages..."
-dnf upgrade -y
-ok "System upgraded"
+# Packages are never upgraded in this buildroot: the kernel module must be
+# built for the kernel the images ship, which is the kernel in the base
+# image — not whatever Fedora published after it.
 
 # ── Detect kernel version ─────────────────────────────────────
 info "Detecting latest kernel version..."
@@ -43,6 +42,14 @@ KERNEL_VERSION="$(rpm -q kernel \
 ok "Kernel: ${KERNEL_VERSION}"
 KERNEL_SRC="/usr/src/kernels/${KERNEL_VERSION}"
 
+# The module is built for the base image's kernel. If Fedora has already
+# pruned that exact kernel's headers, wait for the next fedora-bootc:latest
+# refresh instead of silently building for a kernel no image will run.
+dnf -q --refresh repoquery --available \
+    kernel-devel-matched-"${KERNEL_VERSION}" | grep -q . \
+    || fail "kernel-devel-matched ${KERNEL_VERSION} is not in the repos — fedora-bootc:latest is behind a Fedora kernel bump; the next run will catch up"
+ok "Kernel headers available for ${KERNEL_VERSION}"
+
 # ── Install build dependencies ────────────────────────────────
 info "Installing build dependencies..."
 dnf install -y --setopt=install_weak_deps=False \
@@ -52,6 +59,7 @@ dnf install -y --setopt=install_weak_deps=False \
     autoconf \
     automake \
     libtool \
+    patch \
     rpm-build \
     curl \
     jq \
@@ -158,17 +166,20 @@ ZFS_SRC="${WORK_DIR}/zfs-${ZFS_VERSION}"
 ok "Source extracted: ${ZFS_SRC}"
 
 # ── ZFS ↔ kernel compatibility patch ──────────────────────────
-# Patches ZFS's META (Linux-Maximum) ONLY when BOTH are true:
+# Patches ZFS (META + kernel API shims) ONLY when BOTH are true:
 #   1. Upstream ZFS's own META does NOT yet support our kernel
 #   2. Our kernel is still within the ceiling WE'VE approved
 # Any other case (upstream already supports it, or older kernel)
 # auto-skips with no changes. Kernel > our ceiling = hard fail,
-# never silently patched.
+# never silently patched. Once ZFS ships 7.3 support, this whole
+# block — patch included — becomes a no-op on its own.
 info "Checking ZFS kernel compatibility (META Linux-Maximum)..."
 cd "$ZFS_SRC"
 
+COMPAT_PATCH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patches/linux-7.3.patch"
+
 # ▼▼▼ YOU control this — highest kernel you've validated/approve for patching ▼▼▼
-ZFS_MAX_ALLOWED_KVER="${ZFS_MAX_ALLOWED_KVER:-7.1}"
+ZFS_MAX_ALLOWED_KVER="${ZFS_MAX_ALLOWED_KVER:-7.3}"
 # ▲▲▲ bump this yourself once you've verified a newer kernel actually builds fine ▲▲▲
 
 KERNEL_MAJMIN="$(printf '%s' "$KERNEL_VERSION" | grep -oP '^[0-9]+\.[0-9]+')"
@@ -191,7 +202,14 @@ elif version_gt "$KERNEL_MAJMIN" "$ZFS_MAX_ALLOWED_KVER"; then
     fail "Kernel ${KERNEL_MAJMIN} exceeds your approved ceiling (ZFS_MAX_ALLOWED_KVER=${ZFS_MAX_ALLOWED_KVER}). Refusing to auto-patch — bump ZFS_MAX_ALLOWED_KVER yourself once you've verified this kernel builds fine."
 
 else
-    warn "Kernel ${KERNEL_MAJMIN} exceeds ZFS's declared max (${ZFS_META_MAX}) but is within your approved ceiling (${ZFS_MAX_ALLOWED_KVER}) — patching META"
+    warn "Kernel ${KERNEL_MAJMIN} exceeds ZFS's declared max (${ZFS_META_MAX}) but is within your approved ceiling (${ZFS_MAX_ALLOWED_KVER}) — applying compat patch"
+
+    [[ -f "${COMPAT_PATCH}" ]] || fail "Compat patch not found: ${COMPAT_PATCH}"
+    patch -p1 --dry-run -f < "${COMPAT_PATCH}" >/dev/null 2>&1 \
+        || fail "Linux ${KERNEL_MAJMIN} compat patch does not apply cleanly to ZFS ${ZFS_VERSION}"
+    patch -p1 -f < "${COMPAT_PATCH}" >/dev/null \
+        || fail "Failed to apply Linux ${KERNEL_MAJMIN} compat patch"
+    ok "Compat patch applied"
 
     sed -i "s/^Linux-Maximum:.*/Linux-Maximum:\t${KERNEL_MAJMIN}/" META
     ok "META patched: Linux-Maximum ${ZFS_META_MAX} -> ${KERNEL_MAJMIN}"

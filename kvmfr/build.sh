@@ -26,10 +26,8 @@ say ""
 # ── Paths ─────────────────────────────────────────────────────
 BUILDROOT="/kernel-modules/rpmbuild"
 
-# ── Upgrade system ────────────────────────────────────────────
-info "Upgrading system packages..."
-dnf upgrade -y
-ok "System upgraded"
+# No package upgrades in this buildroot: the module must be built for
+# the kernel in the base image, which is the kernel the images ship.
 
 # ── Detect kernel version ─────────────────────────────────────
 info "Detecting latest kernel version..."

@@ -1,6 +1,6 @@
 # ================================================================
 #  kernel-modules — nightly kmod build & release workflow
-#  github.com/ferret-project/kernel-modules
+#  github.com/ferret-linux/kernel-modules
 # ================================================================
 
 name: Build kmods
@@ -53,37 +53,10 @@ jobs:
           git diff --staged --quiet || git commit -m "chore: keepalive ${TODAY}"
           git push || true
 
-  # ── Detect latest Fedora kernel version ─────────────────────
-  detect-kernel:
-    name: Detect kernel version
-    runs-on: ubuntu-latest
-    outputs:
-      kernel_version: ${{ steps.detect.outputs.kernel_version }}
-
-    steps:
-      - name: Detect latest Fedora kernel
-        id: detect
-        run: |
-          FEDORA_VERSION="$(curl -fLsS "https://endoflife.date/api/fedora.json" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['cycle'])")"
-
-          KERNEL_VERSION="$(curl -fLsS "https://koji.fedoraproject.org/kojihub" \
-            -H "Content-Type: text/xml" \
-            -d "<?xml version=\"1.0\"?><methodCall><methodName>getLatestRPMS</methodName><params><param><value>f${FEDORA_VERSION}-updates</value></param><param><value>kernel</value></param></params></methodCall>" \
-            | grep -oP '<string>\K[^<]+' | grep '^kernel-[0-9]' | head -1 \
-            | sed 's/^kernel-//' | sed 's/$/.x86_64/')"
-
-          [[ -n "$KERNEL_VERSION" ]] \
-            || { echo "Failed to detect kernel version"; exit 1; }
-
-          echo "kernel_version=${KERNEL_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Detected kernel: ${KERNEL_VERSION}"
-
   # ── Build kmods (parallel matrix) ───────────────────────────
   build:
     name: Build ${{ matrix.kmod }}
     runs-on: ubuntu-latest
-    needs: detect-kernel
 
     strategy:
       fail-fast: true
@@ -98,16 +71,13 @@ jobs:
         run: mkdir -p output/${{ matrix.kmod }}
 
       - name: Build ${{ matrix.kmod }} RPMs
-        env:
-          KERNEL_VERSION: ${{ needs.detect-kernel.outputs.kernel_version }}
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/${{ matrix.kmod }}:/kernel-modules/${{ matrix.kmod }}:ro" \
             -v "${{ github.workspace }}/output/${{ matrix.kmod }}:/output" \
-            -e KERNEL_VERSION="${KERNEL_VERSION}" \
             -e FERRET_SB_KEY="${{ secrets.FERRET_SB_KEY }}" \
             -v "${{ github.workspace }}/mok-file/ferret-sb.der:/ferret-sb.der:ro" \
-            quay.io/fedora/fedora-bootc:44 \
+            quay.io/fedora/fedora-bootc:latest \
             bash /kernel-modules/${{ matrix.kmod }}/build.sh
 
       - name: Verify RPMs
@@ -272,9 +242,11 @@ jobs:
   publish:
     name: Publish release
     runs-on: ubuntu-latest
-    needs: [detect-kernel, build]
+    needs: [build]
     permissions:
       contents: write
+    outputs:
+      kernel_version: ${{ steps.kernel.outputs.kernel_version }}
 
     steps:
       - name: Download all RPM artifacts
@@ -293,6 +265,21 @@ jobs:
 
           mkdir -p flat-rpms
           find all-rpms -name '*.rpm' -exec cp {} flat-rpms/ \;
+
+      - name: Determine kernel version from built RPMs
+        id: kernel
+        run: |
+          KERNEL_VERSION="$(ls flat-rpms/kmod-zfs-*.rpm 2>/dev/null \
+            | sed 's|.*/kmod-zfs-||' \
+            | grep -oP '^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.fc[0-9]+\.x86_64' \
+            | sort -u)"
+          [[ -n "${KERNEL_VERSION}" ]] \
+            || { echo "Could not derive kernel version from kmod-zfs RPM name"; exit 1; }
+          [[ "$(wc -l <<< "${KERNEL_VERSION}")" -eq 1 ]] \
+            || { echo "kmod-zfs RPMs disagree on kernel version:"; echo "${KERNEL_VERSION}"; exit 1; }
+
+          echo "kernel_version=${KERNEL_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Kernel: ${KERNEL_VERSION}"
 
       - name: Delete all kernel-* releases and tags
         env:
@@ -334,7 +321,7 @@ jobs:
       - name: Create release with all RPMs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          KERNEL_VERSION: ${{ needs.detect-kernel.outputs.kernel_version }}
+          KERNEL_VERSION: ${{ steps.kernel.outputs.kernel_version }}
         run: |
           RELEASE_TAG="kernel-${KERNEL_VERSION}"
 
@@ -357,7 +344,7 @@ jobs:
   update-repo:
     name: Update DNF repo metadata
     runs-on: ubuntu-latest
-    needs: [detect-kernel, publish]
+    needs: [publish]
     permissions:
       contents: write
 
@@ -365,7 +352,7 @@ jobs:
       - name: Checkout website repo
         uses: actions/checkout@v6
         with:
-          repository: ferret-project/ferret-project.github.io
+          repository: ferret-linux/ferret-linux.github.io
           token: ${{ secrets.WEBSITE_REPO_PAT }}
           path: website
 
@@ -381,7 +368,7 @@ jobs:
 
       - name: Update repodata
         env:
-          KERNEL_VERSION: ${{ needs.detect-kernel.outputs.kernel_version }}
+          KERNEL_VERSION: ${{ needs.publish.outputs.kernel_version }}
         run: |
           REPODIR="website/repo/kmods/x86_64"
           mkdir -p "$REPODIR"
@@ -390,7 +377,7 @@ jobs:
           TMPDIR=$(mktemp -d)
           find all-rpms -name '*.rpm' -exec cp {} "$TMPDIR/" \;
           createrepo_c \
-            --baseurl "https://github.com/ferret-project/kernel-modules/releases/download/kernel-${KERNEL_VERSION}/" \
+            --baseurl "https://github.com/ferret-linux/kernel-modules/releases/download/kernel-${KERNEL_VERSION}/" \
             "$TMPDIR"
 
           cp -r "$TMPDIR/repodata" "$REPODIR/"
