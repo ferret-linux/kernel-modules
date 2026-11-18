@@ -344,7 +344,11 @@ KMOD_PKG="$(rpm -q --queryformat '%{NAME}' kmod-zfs-"${KERNEL_VERSION}" 2>/dev/n
 REBUILT_DIR="${WORK_DIR}/rebuilt"
 RPMREBUILD_TMPDIR="${REBUILT_DIR}/tmp"
 mkdir -p "${REBUILT_DIR}" "${RPMREBUILD_TMPDIR}"
-HOME="${RPMREBUILD_TMPDIR}" rpmrebuild --additional=--buildroot=/tmp/buildroot --batch -d "${REBUILT_DIR}" "${KMOD_PKG}"
+# -n: the rebuilt RPM is unsigned (only the modules inside it are signed),
+# and Fedora's rpm now verifies signatures during --test, so the default
+# install test can never pass here. Verifying the module signatures below
+# is what actually matters.
+HOME="${RPMREBUILD_TMPDIR}" rpmrebuild -n --additional=--buildroot=/tmp/buildroot --batch -d "${REBUILT_DIR}" "${KMOD_PKG}"
 
 mapfile -t REBUILT_RPMS < <(find "${REBUILT_DIR}" -type f -name 'kmod-zfs-*.rpm')
 [[ ${#REBUILT_RPMS[@]} -gt 0 ]] || fail "rpmrebuild failed to produce signed kmod-zfs RPM"
