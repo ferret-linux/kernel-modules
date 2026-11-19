@@ -331,7 +331,12 @@ jobs:
               set -e
               dnf install -y -q rpm-sign >/dev/null
               printf "%s\n" "$RPM_GPG_PRIVATE_KEY" | gpg --batch --import
-              rpm --addsign --define "_gpg_name Ferret Linux Repository" /rpms/*.rpm
+              # Vendor RPMs may carry a legacy signature that rpm --addsign
+              # refuses to coexist with. Strip first, then sign with our key.
+              for f in /rpms/*.rpm; do
+                rpm --delsign "$f" >/dev/null 2>&1 || true
+                rpm --addsign --define "_gpg_name Ferret Linux Repository" "$f"
+              done
               rpm -qpi /rpms/*.rpm 2>/dev/null | grep -i -m3 -A1 signature || true
             '
 
