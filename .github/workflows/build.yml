@@ -36,7 +36,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Keepalive
         run: |
@@ -65,7 +65,7 @@ jobs:
 
     steps:
       - name: Checkout kernel-modules
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Create output directory
         run: mkdir -p output/${{ matrix.kmod }}
@@ -233,7 +233,7 @@ jobs:
           done
 
       - name: Upload RPMs as artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rpms-${{ matrix.kmod }}
           path: output/${{ matrix.kmod }}/*.rpm
@@ -251,7 +251,7 @@ jobs:
 
     steps:
       - name: Download all RPM artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: rpms-*
           path: all-rpms
@@ -372,7 +372,7 @@ jobs:
 
     steps:
       - name: Checkout website repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ferret-linux/ferret-linux.github.io
           token: ${{ secrets.WEBSITE_REPO_PAT }}
